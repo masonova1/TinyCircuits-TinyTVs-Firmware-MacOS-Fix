@@ -2,6 +2,7 @@
 //  TinyCircuits TinyTV Firmware
 //
 //  Changelog:
+//  03/25/2026 MP4 playback update
 //  05/26/2023 Initial Release for TinyTV 2/Mini
 //  02/08/2023 Cross-platform base committed
 //
@@ -13,17 +14,23 @@
 
 #define TINYTV2_COMPILE
 #define TYPE_STRING "TinyTV2"
+#define TinyTV2 1
 
 const int VIDEO_X = 30;
 const int VIDEO_Y = 0;
 const int VIDEO_W = 210;
 const int VIDEO_H = 135;
 const int VIDEOBUF_SIZE = 1024 * 20;
-const int VIDEOBUF_CNT = 2;
-const int AUDIOBUF_SIZE = 1024 * 2;
+const int VIDEOBUF_CNT = 1;
+const int AUDIOBUF_SIZE = 1024 * 6;
 
-uint8_t sharedBuffer[VIDEOBUF_SIZE * VIDEOBUF_CNT + AUDIOBUF_SIZE];
-uint8_t (*videoBuf)[VIDEOBUF_SIZE] = (uint8_t (*)[VIDEOBUF_SIZE])sharedBuffer;
+#define H264_OUTPUT_W (208)
+#define H264_OUTPUT_H (128)
+
+__attribute__((aligned(4))) uint8_t sharedBuffer[VIDEOBUF_SIZE * VIDEOBUF_CNT + AUDIOBUF_SIZE];
+
+uint8_t* videoBuf[2] = {sharedBuffer, NULL}; // Second buffer allocated at runtime only for AVI
+
 uint8_t (*audioBuf) = (uint8_t (*))(sharedBuffer + VIDEOBUF_SIZE*VIDEOBUF_CNT);
 
 #define DOUBLE_BUFFER true
@@ -48,9 +55,11 @@ TinyScreen display = TinyScreen(RP2040TV);
 extern Adafruit_USBD_CDC cdc;
 const void dbgPrint(const char* s) {
   cdc.println(s);
+  cdc.flush();
 }
 const void dbgPrint(const String& s) {
   cdc.println(s);
+  cdc.flush();
 }
 #else
 const void dbgPrint(const char* s) {
@@ -265,7 +274,6 @@ void initAudioPin(int pin) {
   pwm_config_set_wrap(&config, 1023);    // 8 bit audio output
   pwm_init(audioPinPWMSliceNumber, &config, true);
   digitalWrite(SPK_EN_PIN, HIGH); // Speaker enable
-  //if (!mute)
 }
 
 void initalizePins() {

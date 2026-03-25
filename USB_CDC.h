@@ -2,6 +2,7 @@
 //  TinyCircuits TinyTV Firmware
 //
 //  Changelog:
+//  03/25/2026 MP4 playback update
 //  05/26/2023 Initial Release for TinyTV 2/Mini
 //  02/08/2023 Cross-platform base committed
 //
@@ -55,6 +56,9 @@ bool handleCDCcommand(String input) {
     while (val.indexOf("\"") >= 0) {
       val.remove(val.indexOf("\""), 1);
     }
+    SerialInterface.println("key: "+key);
+    SerialInterface.println("val: "+val);
+    SerialInterface.flush();
     //    cdc.print("key = ");
     //    cdc.print(key);
     //    cdc.print(", val = ");
@@ -65,6 +69,7 @@ bool handleCDCcommand(String input) {
     } else if (key == String("GET")) {
       //cdc.println( String("{\"") + val + String("\":\"") + getKeyValue(val) + String("\"}"));
       SerialInterface.println( String("{\"") + val + String("\":") + getKeyValue(val) + String("}"));
+      SerialInterface.flush();
       //cdc.print(val);
       //cdc.print(":");
       //cdc.println(getKeyValue(val));
@@ -79,8 +84,10 @@ bool handleCDCcommand(String input) {
         bool rtn = fatFormatter.format(sd.card(), sectorBuffer, NULL);
         if (!rtn) {
           SerialInterface.println("Sd Format Error");
+          SerialInterface.flush();
         } else {
           SerialInterface.println("Sd Format Success");
+          SerialInterface.flush();
         }
 #ifndef TinyTVKit
         delay(500);
@@ -90,10 +97,12 @@ bool handleCDCcommand(String input) {
       }
     } else {
       SerialInterface.println("Unhandled JSON key");
+      SerialInterface.flush();
     }
   } else {
     SerialInterface.print("Invalid JSON? ");
     SerialInterface.println(input);
+    SerialInterface.flush();
     return true;
   }
   return false;
@@ -113,6 +122,7 @@ void commandSearch(uint16_t jpegBufferSize) {
       if (c == '}') {
         //end of JSON string
         commandBuffer[commandBufPos] = 0;
+        //Serial.println("Got command buffer: "+String(commandBuffer));
         if (handleCDCcommand(String(commandBuffer))) {
           // Format error- clear buffer
           while (SerialInterface.available()) {
@@ -137,12 +147,18 @@ void commandSearch(uint16_t jpegBufferSize) {
 
 
 bool incomingCDCHandler(uint8_t *jpegBuffer, uint16_t jpegBufferSize, bool *live, uint16_t *totalBytes) {
+  //Serial.println("CDC handler!");
+  yield();
+  SerialInterface.flush();
   if (SerialInterface.available() > 0) {
     liveTimeoutStart = millis();
 
     if (!frameDeliminatorAcquired) {
       // Search for deliminator to get back to filling buffers or respond to commands
+      //Serial.println("No delimiter, searching for command...");
       commandSearch(jpegBufferSize);
+    } else {
+      //Serial.println("Frame delimiter, no command search...");
     }
 
     if (frameDeliminatorAcquired) {

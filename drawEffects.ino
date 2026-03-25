@@ -2,6 +2,7 @@
 //  TinyCircuits TinyTV Firmware
 //
 //  Changelog:
+//  03/25/2026 MP4 playback update
 //  05/26/2023 Initial Release for TinyTV 2/Mini
 //  02/08/2023 Cross-platform base committed
 //
@@ -85,6 +86,42 @@ void drawVolumeFor(uint32_t timeMS) {
   volumeDrawTimer = timeMS;
 }
 
+char volumeString[] = "|-------|";
+
+char* getVolumeString() {
+  return volumeString;
+}
+
+void drawVolumeLineBuffer(uint16_t* line, int y) {
+  if (showVolumeBar) {
+    if (volumeDrawTimer > millis() - volumeDrawStart) {
+      if (VIDEO_H > 64) {
+        if(y >= VIDEO_H-48) {
+  
+          screenBuffer.setFont(thinPixel7_10ptFontInfo);
+          screenBuffer.setWidth(VIDEO_W);
+          screenBuffer.setY(0, 1);
+          screenBuffer.setBuffer((uint8_t *)line);
+          
+          screenBuffer.setCursor((VIDEO_W / 2) - 18, VIDEO_H - 48 - y);
+          screenBuffer.print(getVolumeString());
+        }
+      } else {
+        if(y >= VIDEO_H-24) {
+  
+          screenBuffer.setFont(thinPixel7_10ptFontInfo);
+          screenBuffer.setWidth(VIDEO_W);
+          screenBuffer.setY(0, 1);
+          screenBuffer.setBuffer((uint8_t *)line);
+          
+          screenBuffer.setCursor((VIDEO_W / 2) - 22, VIDEO_H - 24 - y);
+          screenBuffer.print(getVolumeString());
+        }
+      }
+    }
+  }
+}
+
 void drawVolume(JPEGDRAW* block) {
   if (showVolumeBar) {
     if (volumeDrawTimer > millis() - volumeDrawStart) {
@@ -115,6 +152,36 @@ void drawChannelNumberFor(uint32_t timeMS) {
   channelDrawTimer = timeMS;
 }
 
+void drawChannelNumberLineBuffer(uint16_t* line, int y) {
+  if (showChannelNumber) {
+    if (channelDrawTimer > millis() - channelDrawStart) {
+      char buf[10];
+      sprintf(buf, "CH%.2i", channelNumber);
+      if (VIDEO_H > 64) {
+        if (y > 5) {
+          screenBuffer.setFont(thinPixel7_10ptFontInfo);
+          screenBuffer.setWidth(VIDEO_W);
+          screenBuffer.setY(0, 1);
+          screenBuffer.setBuffer((uint8_t *)line);
+          
+          screenBuffer.setCursor(VIDEO_W-58, 12-y);
+          screenBuffer.print(buf);
+        }
+      } else {
+        if (y > 1) {
+          screenBuffer.setFont(thinPixel7_10ptFontInfo);
+          screenBuffer.setWidth(VIDEO_W);
+          screenBuffer.setY(0, 1);
+          screenBuffer.setBuffer((uint8_t *)line);
+          
+          screenBuffer.setCursor(29, 1 - y);
+          screenBuffer.print(buf);
+        }
+      }
+    }
+  }
+}
+
 void drawChannelNumber(JPEGDRAW* block) {
   if (showChannelNumber) {
     if (channelDrawTimer > millis() - channelDrawStart) {
@@ -122,6 +189,7 @@ void drawChannelNumber(JPEGDRAW* block) {
       sprintf(buf, "CH%.2i", channelNumber);
       if (IMG_H > 64) {
         if (block->y < 20 && block->y > 10 && block->x + block->iWidth > IMG_W - 10) {
+          screenBuffer.setFont(thinPixel7_10ptFontInfo);
           screenBuffer.setCursor(IMG_W - 55 - block->x, /*16 - block->y*/0);
           screenBuffer.print(buf);
         }
@@ -131,6 +199,7 @@ void drawChannelNumber(JPEGDRAW* block) {
           if (IMG_W == 64) {
             xOffset = 32;
           }
+          screenBuffer.setFont(thinPixel7_10ptFontInfo);
           screenBuffer.setCursor(IMG_W - xOffset - block->x, 5 - block->y);
           screenBuffer.print(buf);
         }
@@ -154,6 +223,27 @@ void setCornerRadius(uint8_t cropRadius) {
   }
 }
 
+void drawCornersPartialLineBuf(uint16_t* lineBuf, uint16_t y) {
+  if (roundedCorners) {
+    if (IMG_H > 64 || IMG_W == 64) {
+      if (y < 24) {
+        for(int i = 0; i < cropRadiusLimits[y]; i++) {
+          lineBuf[i] = 0;
+        }
+        for(int i = IMG_W-cropRadiusLimits[y]; i < IMG_W; i++) {
+          lineBuf[i] = 0;
+        }
+      } else if (y >= IMG_H-24) {
+        for(int i = 0; i < cropRadiusLimits[IMG_H-y]; i++) {
+          lineBuf[i] = 0;
+        }
+        for(int i = IMG_W-cropRadiusLimits[IMG_H-y]; i < IMG_W; i++) {
+          lineBuf[i] = 0;
+        }
+      }
+    }
+  }
+}
 
 void drawCornersPartial(JPEGDRAW* block) {
   if (roundedCorners) {

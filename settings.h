@@ -2,6 +2,7 @@
 //  TinyCircuits TinyTV Firmware
 //
 //  Changelog:
+//  03/25/2026 MP4 playback update
 //  05/26/2023 Initial Release for TinyTV 2/Mini
 //  02/08/2023 Cross-platform base committed
 //
@@ -13,7 +14,7 @@
 int channelNumber = 1;
 //int volumeSetting = 3;
 bool alphabetizedPlaylist = true;
-bool loopVideo = true;
+bool loopVideo = false;
 bool liveMode = true;
 bool doStaticEffects = true;
 bool showChannelNumber = true;
@@ -86,6 +87,7 @@ bool isValidKey(String key) {
 }
 
 bool setValueByKey(String key, String val) {
+  dbgPrint("Setting "+String(key)+" to "+val);
   if (key == String("channel")) {
     channelNumber = val.toInt();
     inputFlags.channelSet = true;
@@ -145,7 +147,6 @@ void loadSettings() {
       }
       if ((c == '\n') || (c == '\r') || (settingsFile.available() == 0)) {
         if (line.length() > 5) {
-          //cdc.print(line);
           setKeyValue(line);
         } else {
           //cdc.print("Empty settings file line?: " + line);

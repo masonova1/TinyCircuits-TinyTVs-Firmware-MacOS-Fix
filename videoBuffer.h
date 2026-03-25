@@ -2,6 +2,7 @@
 //  TinyCircuits TinyTV Firmware
 //
 //  Changelog:
+//  03/25/2026 MP4 playback update
 //  05/26/2023 Initial Release for TinyTV 2/Mini
 //  02/08/2023 Cross-platform base committed
 //
@@ -22,13 +23,13 @@ void JPEGBufferFilled(int length) {
   decoderDataLength[currentWriteBuf] = length;
   frameDecoded[currentWriteBuf] = false;
   frameReady[currentWriteBuf] = true;
-  if (DOUBLE_BUFFER)
+  if (DOUBLE_BUFFER && (videoBuf[1 - currentWriteBuf] != NULL))
     currentWriteBuf = 1 - currentWriteBuf;
 }
 
 uint8_t * getFilledJPEGBuffer() {
   uint8_t filledBuffer = currentWriteBuf;
-  if (DOUBLE_BUFFER)
+  if (DOUBLE_BUFFER && (videoBuf[1 - currentWriteBuf] != NULL))
     filledBuffer = 1 - currentWriteBuf;
   if (frameReady[filledBuffer]) {
     currentDecodeBuf = filledBuffer;
@@ -44,6 +45,7 @@ int getJPEGBufferLength() {
 void resetBuffers() {
   frameReady[0] = false; frameReady[1] = false;
   frameDecoded[0] = true; frameDecoded[1] = true;
+  currentWriteBuf = currentDecodeBuf = 0;
   dbgPrint("resetBuffers");
 }
 

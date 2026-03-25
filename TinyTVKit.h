@@ -2,6 +2,7 @@
 //  TinyCircuits TinyTV Firmware
 //
 //  Changelog:
+//  03/25/2026 MP4 playback update
 //  05/26/2023 Initial Release for TinyTV 2/Mini
 //  02/08/2023 Cross-platform base committed
 //
@@ -21,7 +22,7 @@ const int VIDEOBUF_SIZE = 1024 * 3;
 const int VIDEOBUF_CNT = 1;
 const int AUDIOBUF_SIZE = 1024 * 2;
 
-uint8_t sharedBuffer[VIDEOBUF_SIZE*VIDEOBUF_CNT + AUDIOBUF_SIZE];
+__attribute__((aligned(4))) uint8_t sharedBuffer[VIDEOBUF_SIZE*VIDEOBUF_CNT + AUDIOBUF_SIZE];
 uint8_t (*videoBuf)[VIDEOBUF_SIZE] = (uint8_t (*)[VIDEOBUF_SIZE])sharedBuffer;
 uint8_t (*audioBuf) = (uint8_t (*))(sharedBuffer + VIDEOBUF_SIZE*VIDEOBUF_CNT);
 
@@ -220,7 +221,7 @@ bool tcIsSyncing() {
 
 void setAudioHWSampleRate(int sr) {
   // Enable GCLK for TCC2 and TC5 (timer counter input clock)
-  GCLK->CLKCTRL.reg = (uint16_t) (GCLK_CLKCTRL_CLKEN | GCLK_CLKCTRL_GEN_GCLK0 | GCLK_CLKCTRL_ID(GCM_TC4_TC5)) ;
+  GCLK->CLKCTRL.reg = (uint16_t) (GCLK_CLKCTRL_CLKEN | GCLK_CLKCTRL_GEN_GCLK0 | GCLK_CLKCTRL_ID(GCM_TC4_TC5));
   while (GCLK->STATUS.bit.SYNCBUSY);
   // Reset TCx
   TC5->COUNT16.CTRLA.reg = TC_CTRLA_SWRST;

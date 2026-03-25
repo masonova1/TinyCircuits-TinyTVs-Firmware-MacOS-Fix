@@ -2,6 +2,7 @@
 //  TinyCircuits TinyTV Firmware
 //
 //  Changelog:
+//  03/25/2026 MP4 playback update
 //  05/26/2023 Initial Release for TinyTV 2/Mini
 //  02/08/2023 Cross-platform base committed
 //
@@ -12,11 +13,74 @@
 volatile int sampleIndex = 0;
 volatile int loadedSampleIndex = 0;
 volatile int soundVolume = 1;
+volatile int audioBufferWrapped = 0;
 
 volatile bool mute = false;
 
 uint32_t currentSampleRate = 0;
 uint32_t numberOfStaticSamples = 0;
+
+volatile int pushAudioSample(uint8_t x) {
+  if(loadedSampleIndex != sampleIndex) {
+    // Data between buf_idx and buf_load
+    audioBuf[loadedSampleIndex++] = x;
+    if(loadedSampleIndex >= AUDIOBUF_SIZE) {
+      loadedSampleIndex = 0;
+      audioBufferWrapped = 1;
+    }
+    return 1;
+  } else {
+    if(audioBufferWrapped) {
+      // Buffer full
+      return 0;
+    } else {
+      audioBuf[loadedSampleIndex++] = x;
+      if(loadedSampleIndex >= AUDIOBUF_SIZE) {
+        loadedSampleIndex = 0;
+        audioBufferWrapped = 1;
+      }
+      return 1;
+    }
+  }
+}
+
+volatile int dequeueAudioSample() {
+  if(loadedSampleIndex != sampleIndex) {
+    // Data between buf_idx and buf_load
+    sampleIndex++;
+    if(sampleIndex >= AUDIOBUF_SIZE) {
+      audioBufferWrapped = 0;
+      sampleIndex = 0;
+    }
+    return 1;
+  } else {
+    if(audioBufferWrapped) {
+      sampleIndex++;
+      if(sampleIndex >= AUDIOBUF_SIZE) {
+        sampleIndex = 0;
+        audioBufferWrapped = 0;
+      }
+      return 1;
+    } else {
+      // Buffer is empty
+      return 0;
+    }
+  }
+}
+
+volatile int peekAudioSample() {
+  return audioBuf[sampleIndex];
+}
+
+int getAudioSampleCount() {
+  if(loadedSampleIndex > sampleIndex) {
+    // Data between buf_idx and buf_load
+    return loadedSampleIndex - sampleIndex;
+  } else {
+    // Data from buf_idx to end and then to buf_load
+    return (audioBufferWrapped) ? (AUDIOBUF_SIZE-sampleIndex) + loadedSampleIndex : 0;
+  }
+}
 
 void playStaticFor(uint32_t timeMS) {
   if (currentSampleRate) {
@@ -48,39 +112,35 @@ void setVolume(int vol) {
 
 void clearAudioBuffer() {
   sampleIndex = 0;
+//  resetFLACSpillover();
   loadedSampleIndex = sampleIndex;
+  audioBufferWrapped = 0;
   memset(audioBuf, 0x80, AUDIOBUF_SIZE);
 }
 
 int audioSamplesInBuffer() {
   int samples = loadedSampleIndex - sampleIndex;
   if (samples < 0) {
-    samples += AUDIOBUF_SIZE;
+    samples = AUDIOBUF_SIZE;
   }
   return samples;
 }
 
-void addToAudioBuffer(uint8_t * tempBuffer, int len) {
-  while (len) {
-    audioBuf[loadedSampleIndex] = *tempBuffer;
+int addToAudioBuffer(uint8_t * tempBuffer, int len) {
+  int ret = 0;
+  while ((ret < len) && pushAudioSample(*tempBuffer)) {
     tempBuffer++;
-    len--;
-    loadedSampleIndex++;
-    if ((loadedSampleIndex) >= AUDIOBUF_SIZE) {
-      loadedSampleIndex = 0;
-    }
+    ret++;
   }
+  return ret;
 }
-
 
 #ifndef TinyTVKit
 void pwmInterruptHandler(void) {
   int sample = 511;
-  if (sampleIndex != loadedSampleIndex) {
-    sample = audioBuf[sampleIndex] << 2;
-    sampleIndex++;
-    if (sampleIndex >= AUDIOBUF_SIZE)
-      sampleIndex = 0;
+  sample = peekAudioSample() << 2;
+  if(!dequeueAudioSample()) {
+    //sample = 0;
   }
 
   sample -= 511;
@@ -124,12 +184,8 @@ extern void Audio_Handler (void);
 void Audio_Handler (void)
 {
   int sample = 511;
-  if (sampleIndex != loadedSampleIndex) {
-    sample = audioBuf[sampleIndex] << 2;
-    sampleIndex++;
-    if (sampleIndex >= AUDIOBUF_SIZE)
-      sampleIndex = 0;
-  }
+  sample = peekAudioSample() << 2;
+  dequeueAudioSample();
 
   sample -= 511;
   if (soundVolume) {
@@ -149,8 +205,10 @@ void Audio_Handler (void)
     numberOfStaticSamples--;
   }
 
+
+
   if (!mute) {
-    DAC->DATA.reg =  sample & 0x03FF; ///sample >>= (8 - (soundVolume / 32));
+    DAC->DATA.reg =  sample & 0x03FF;
   }
 
   // Clear the interrupt
