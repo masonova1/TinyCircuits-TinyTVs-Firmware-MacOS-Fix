@@ -51,9 +51,9 @@ JPEGDEC jpeg;
 bool streamError = false;
 
 // Select ONE from this list!
-#include "TinyTV2.h"
+//#include "TinyTV2.h"
 //#include "TinyTVMini.h"
-//#include "TinyTVKit.h"
+#include "TinyTVKit.h"
 
 #ifdef ARDUINO_ARCH_RP2040
 #include <Adafruit_TinyUSB.h>

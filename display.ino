@@ -180,6 +180,8 @@ static void torgb(uint16_t *sadfw, int iY1, int iY2, int iCb, int iCr) {
   sadfw[1] = ulPixel2;
 }
 
+#ifndef TinyTVKit
+
 void convertPushLines(uint8_t* framePtr, int w, int h) {
   uint32_t Cr, Cb;
   int32_t Y1, Y2, Y3, Y4;
@@ -235,6 +237,8 @@ void convertPushLines(uint8_t* framePtr, int w, int h) {
     display.writeBufferDMA((uint8_t*)singleLineBuf[1-lineBufIdx], w * 2);
   }
 }
+
+#endif
 
 void newJPEGFrameSize(int newWidth, int newHeight) {
   if ( newWidth <= VIDEO_W && newHeight <= VIDEO_H) {
