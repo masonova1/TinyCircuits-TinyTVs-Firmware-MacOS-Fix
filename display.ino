@@ -191,6 +191,8 @@ void convertPushLines(uint8_t* framePtr, int w, int h) {
   // display.clearWindow(0, 0, w, (VIDEO_H-h)/2);
   // display.clearWindow(0, VIDEO_Y + h, w, (VIDEO_H-h)/2);
 
+  #ifdef TINYTV2_COMPILE
+
   memset(singleLineBuf[0], 0, sizeof(singleLineBuf[0]));
 
   setScreenAddressWindow(VIDEO_X, 0, VIDEO_W, (VIDEO_H-h)/2);
@@ -210,6 +212,8 @@ void convertPushLines(uint8_t* framePtr, int w, int h) {
     while (!display.getReadyStatusDMA()) {}
     display.writeBufferDMA((uint8_t*)singleLineBuf[0], VIDEO_H * 2 * 2);
   }
+
+  #endif
 
   #ifdef TINYTV2_COMPILE
   setScreenAddressWindow(VIDEO_X, VIDEO_Y + (VIDEO_H-h)/2, w-1, h + (VIDEO_H-h)/2);
