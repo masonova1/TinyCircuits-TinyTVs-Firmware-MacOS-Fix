@@ -251,7 +251,9 @@ void loop() {
   if (USBJustConnected() && !live) {
     releaseSdCardForUSBMSC();
     setAudioSampleRate(100);
+    dbgPrint("Saving settings to SD card!");
     saveSettings(); // Save settings to SD card on USB connect
+    dbgPrint("Saved!");
     USBMSCStart();
     for (int i = 0; i < 50; i++) {
       delay(1);
@@ -300,10 +302,31 @@ void loop() {
     }
     //USBMSC ejected, return to video playback:
     clearPowerButtonPressInt();
-    loadSettings(); // Reload settings from SD card in case user changed them
+
     if (inputFlags.settingsChanged) {
       inputFlags.settingsChanged = false;
+      dbgPrint("Overwriting settings to LFS!");
       saveSettingsFlashBuffer();
+      saveSettings();
+      dbgPrint("Overwritten!");
+    } else {
+      dbgPrint("Copying settings to LFS!");
+
+      File32 src;
+      src.open("settings.txt", O_READ);
+
+      File dst = LittleFS.open("settings.txt", "w");
+      uint8_t buf[512];
+      
+      while(src.available()) {
+        size_t read = src.read(buf, 512);
+        dst.write(buf, read);
+      }
+
+      dst.close();
+      src.close();
+
+      dbgPrint("Copied!");
     }
     initVideoPlayback(true);
   }
@@ -729,6 +752,8 @@ bool frameWaitDurationElapsed() {
     if ((int64_t(micros() - framerateHelper) < (targetFrameTime - 5000))) {
       yield();
 #ifndef TinyTVKit
+      // dbgPrint("Loading FLAC chunks inner, framerateHelper: "+String((int)framerateHelper)+", diff: "+String((int)(int64_t(micros() - framerateHelper))));
+      // dbgPrint("targetFrameTime: "+String((int)(targetFrameTime - 5000)));
       loadFLACDataChunk();
 #endif
       return false;
@@ -751,7 +776,11 @@ void setup1() {
 
 void loop1() {
 
+  #if defined(has_USB_MSC) && !defined(TinyTVKit)
+
   MSCloopCore1();
+
+  #endif
   
   if (TVscreenOffMode) {
     return;
@@ -760,7 +789,7 @@ void loop1() {
   //decode JPEG if available
   #ifndef TinyTVKit
   if (!getFilledJPEGBuffer() && !getH264DecodeReady()) {
-    //dbgPrint("No filled JPEG buffer!");
+    //dbgPrint("No filled JPEG buffer or H264 data!");
     return;
   }
   #else

@@ -45,10 +45,12 @@ uint32_t mp4moovSize = 0;
 uint8_t trafBuf1[1024];
 uint8_t trafBuf0[1024];
 uint8_t h264Buf[12288];
-uint8_t flacBuf[8192];
+uint8_t flacBuf[4096];
+uint8_t flacBuf2[4096];
 uint16_t h264SampleOffsets[256];
 uint16_t flacSampleOffsets[256];
 int h264DefaultSampleSize = 0;
+int flacBuf2Len = 0;
 int flacDefaultSampleSize = 0;
 
 int trafOffset;
@@ -354,7 +356,9 @@ int loadFLACDataChunk() {
   int32_t sampleBuf[512];
   uint32_t sampleBufSize = 512;
 
-  if(currentFLACDataChunk >= numFLACDataChunks) return 1;
+  if(currentFLACDataChunk >= numFLACDataChunks) {
+    return 1;
+  }
 
   if(!mutex_try_enter(&flacLoadMtx, NULL)) return 0;
 
@@ -372,7 +376,7 @@ int loadFLACDataChunk() {
 
   uint64_t t1 = micros();
 
-  dbgPrint("(core1) flac chunk decode in "+String((int)(t1-t0)));
+  dbgPrint("(core1) flac chunk decode in "+String((int)(t1-t0)) + +", level: "+String(getAudioSampleCount()));
 
  if(getAudioSampleCount() < 16) {
    totalAudioBufferDrops++;
@@ -516,10 +520,15 @@ int loadMP4TrackFragment(int writeH264TrafInfo = 1) {
         if(tfhdFlags & 1) { /* base-data-offset */ }
         if(tfhdFlags & 2) { /* SDI */ }
 
-        if(tfhdFlags & 8) {
+        if((tfhdFlags & 8)) {
           /* default sample duration */
           sampleDefaultDuration = getIntLE(trafBuf+trafBufStart+28);
-          targetFrameTime = 1000000 / (MP4Timescale / sampleDefaultDuration);
+          if(sampleDefaultDuration != 0) {
+            targetFrameTime = 1000000 / (MP4Timescale / sampleDefaultDuration);
+            dbgPrint("targetFrameTime set to "+String((int)targetFrameTime));
+            dbgPrint("MP4 timescale: "+String(MP4Timescale));
+            dbgPrint("sampleDefaultDuration: "+String(sampleDefaultDuration));
+          }
         }
         
         if(tfhdFlags & 16) { /* default sample size */ }
@@ -622,11 +631,38 @@ void loadNextTraf() {
       
       if(getFLACReady()) {
         dbgPrint("Flushing FLAC samples...");
-        while(!loadFLACDataChunk()) {}
+        infile.seekSet(getReadOffset());
+
+        int writeOffset = 0;
+        int size = trafDefaultSampleSize;
+        for(int i = 0; i < getTrunSampleCount(); i++) {
+          if(flacDefaultSampleSize) {
+            size = getIntLE(
+              getFLACTrafBuf()
+              + trafBufStart
+              + tfhdBase
+              + trunSamplesStart
+              + sampleSizeOffset
+              + i * trafBytesPerSample
+            );
+          }
+          flacSampleOffsets[i] = writeOffset;
+          writeOffset += size;
+        }
+
+        infile.read(flacBuf2, writeOffset);
+        flacBuf2Len = writeOffset;
+
+        dbgPrint("Flushing FLAC samples for next data...");
+        while(!loadFLACDataChunk()) { yield(); }
         uint64_t t0 = micros();
+
         mutex_enter_blocking(&flacLoadMtx);
         currentFLACDataChunk = numFLACDataChunks = 0;
-        skipToAndLoadFLACTraf();
+
+        memcpy(flacBuf, flacBuf2, flacBuf2Len);
+        loadMP4FLACData();
+
         mutex_exit(&flacLoadMtx);
         uint64_t t1 = micros();
         dbgPrint("FLAC skip+load in "+String((int)(t1-t0))+" us");
@@ -640,10 +676,15 @@ void loadNextTraf() {
         return;
       }
 
+      dbgPrint("Getting next toplevel box...");
+
       getMP4NextTopLevel();
+
+      dbgPrint("Skipping MDAT...");
       
       skipIfMdat();
     }
+    //dbgPrint("Tracks loaded!");
 }
 
 void loadH264Samples() {
@@ -736,6 +777,7 @@ void getFLACSample(uint8_t* sampleBuf, int s, uint32_t* size) {
   } else {
     *size = trafDefaultSampleSize;
   }
+  dbgPrint("Copying FLAC sample from "+String(flacSampleOffsets[s]));
   memcpy(sampleBuf, flacBuf+flacSampleOffsets[s], *size);
 }
 

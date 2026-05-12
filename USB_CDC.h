@@ -75,6 +75,8 @@ bool handleCDCcommand(String input) {
       //cdc.println(getKeyValue(val));
     } else if (key == String("SET")) {
       if (setKeyValue(val)) {
+        dbgPrint("Settings changed!");
+        SerialInterface.println("OK: " + val + ":" + getKeyValue(val));
         inputFlags.settingsChanged = true;//.saveSettings();
       }
     } else if (key == String("FORMAT")) {
