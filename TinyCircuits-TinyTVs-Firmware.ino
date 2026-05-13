@@ -86,6 +86,7 @@ char splashVidFileName[20] = "";
 bool splashPlaybackMode = false;
 bool firstFrame = true;
 bool wasInit = false;
+bool lastH264Sample = false;
 
 #ifndef TinyTVKit
 
@@ -650,12 +651,28 @@ void loop() {
 
     if(!getH264DecodeReady() && getH264Ready()) {
         
-      if(getH264TrafCurrentSample() < getH264SampleCount()) {
-        int s_size;
-        getH264Sample(getFreeJPEGBuffer(), getH264TrafCurrentSample(), &s_size);
-        advanceH264TrafCurrentSample();
+      if(getH264TrafCurrentSample() < (getH264SampleCount())) {
+        if(getH264TrafCurrentSample() == (getH264SampleCount()-1)) {
+          dbgPrint("Buffering last H264 sample!!");
+          //while(lastH264Sample) { yield(); }
+          // loadLastH264Sample(getH264TrafCurrentSample());
+          // pushLastH264Sample(getFreeJPEGBuffer());
+          lastH264Sample = true;
+          int bufSize;
+          uint8_t* src = getH264SamplePtr(getH264TrafCurrentSample(), &bufSize);
+          dbgPrint("buffer size: "+String(bufSize));
+          memcpy(getH264LastSampleBuf(), src, bufSize);
+          setH264LastSampleSize(bufSize);
+          H264Used();
+          resetH264Traf();
+        } else {
+          int s_size;
+          getH264Sample(getFreeJPEGBuffer(), getH264TrafCurrentSample(), &s_size);
+          advanceH264TrafCurrentSample();
+          while(!frameWaitDurationElapsed()) { loadFLACDataChunk(); }
+        }
 
-        while(!frameWaitDurationElapsed()) { loadFLACDataChunk(); }
+        //getH264Sample(getFreeJPEGBuffer(), getH264TrafCurrentSample(), &s_size);
         
         dbgPrint("Marking buffer filled!");
         setH264DecodeReady();
@@ -664,7 +681,7 @@ void loop() {
         H264Used();
         resetH264Traf();
       }
-    } else if(!getH264DecodeReady() && (getH264TrafCurrentSample() >= getH264SampleCount())) {
+    } else if(!getH264DecodeReady() && (getH264TrafCurrentSample() >= (getH264SampleCount()))) {
         H264Used();
         resetH264Traf();
     } else {
@@ -832,14 +849,31 @@ void loop1() {
       dbgPrint("Core1 fixing and decoding...");
 
       int bufSize = -1;
-      uint8_t* bufPtr = getH264SamplePtr(getH264TrafCurrentSample() - 1, &bufSize);
+      uint8_t* bufPtr;
 
-      if(bufPtr) fixAVCCStream(bufPtr, bufSize);
+      uint32_t ret_code = H264BSD_ERROR;
+
+      if(lastH264Sample) {
+        dbgPrint("Loading last h264 sample!!!");
+        lastH264Sample = false;
+        bufSize = getH264LastSampleSize();
+        bufPtr = getH264LastSampleBuf();
+        
+        if(bufPtr) fixAVCCStream(bufPtr, bufSize);
+        ret_code = h264bsdDecode(decHd, bufPtr, bufSize, &frame_buffer, (u32*)(&w), (u32*)(&h));
+        setH264DecodeDone();
+      } else {
+        bufPtr = getH264SamplePtr(getH264TrafCurrentSample() - 1, &bufSize);
+          if(bufPtr) fixAVCCStream(bufPtr, bufSize);
+        
+        ret_code = h264bsdDecode(decHd, bufPtr, bufSize, &frame_buffer, (u32*)(&w), (u32*)(&h));
+
+        setH264DecodeDone();
+      }
+
       
-      uint32_t ret_code = h264bsdDecode(decHd, bufPtr, bufSize, &frame_buffer, (u32*)(&w), (u32*)(&h));
 
       int push_ready = false;
-      setH264DecodeDone();
       strncpy(getVolumeString(), "|-------|", 10);
       getVolumeString()[1 + volumeSetting] = '+';
 

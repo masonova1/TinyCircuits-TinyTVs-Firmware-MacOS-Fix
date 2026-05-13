@@ -45,10 +45,13 @@ uint32_t mp4moovSize = 0;
 uint8_t trafBuf1[1024];
 uint8_t trafBuf0[1024];
 uint8_t h264Buf[12288];
+uint8_t h264LastSampleBuf[8192];
 uint8_t flacBuf[4096];
 uint8_t flacBuf2[4096];
 uint16_t h264SampleOffsets[256];
 uint16_t flacSampleOffsets[256];
+uint16_t flacSampleOffsets2[256];
+int lastH264SampleSize = 0;
 int h264DefaultSampleSize = 0;
 int flacBuf2Len = 0;
 int flacDefaultSampleSize = 0;
@@ -92,6 +95,7 @@ int loadH264Traf = 1;
 int mp4SeekMS = 0;
 int currentFLACDataChunk = 0;
 int numFLACDataChunks = 0;
+int nextFLACTrunSamplesCount = 0;
 
 bool isMdat() { return haveMdat; }
 bool isMoof() { return haveMoof; }
@@ -108,12 +112,15 @@ int getMP4ToplevelError() { return MP4ToplevelError; }
 int getTrafSamplesReady() { return trafSamplesReady; }
 int getTrafTrack() { return trafTrack; }
 int getTrunSampleCount() { return trunNSamples; }
+int getH264LastSampleSize() { return lastH264SampleSize; }
+void setH264LastSampleSize(int size) { lastH264SampleSize = size; } 
 int getH264SampleCount() { return H264NSamples; }
 int getH264TrafCurrentSample() { return H264TrafCurrentSample; }
 int getTimescaleDuration() { return timescaleDuration; }
 uint8_t* getH264TrafBuf() { return trafBuf0; }
 uint8_t* getFLACTrafBuf() { return trafBuf1; }
 uint8_t* getFLACBuf() { return flacBuf; }
+uint8_t* getH264LastSampleBuf() { return h264LastSampleBuf; }
 
 int H264Decoded = 1;
 
@@ -608,6 +615,8 @@ void loadNextTraf() {
 
     loadFLACDataChunk();
 
+    int p0 = infile.position();
+
     if(loadH264Traf) {
       dbgPrint("Loading tracks!");
       loadMP4TrackFragment(1);
@@ -617,6 +626,7 @@ void loadNextTraf() {
       dbgPrint("H264 skip+load in "+String((int)(t1-t0))+" us");
       
       skipToMoof();
+
       getMP4NextTopLevel();
 
       
@@ -625,12 +635,15 @@ void loadNextTraf() {
       // Load FLAC data
       int ft0 = micros();
 
-      int p0 = infile.position();
-
+      p0 = infile.position();
+      loadFLACTraf = 1;
+    }
+    
+    if(loadFLACTraf) {
       loadMP4TrackFragment(0); // Don't overwrite h264 data
       
       if(getFLACReady()) {
-        dbgPrint("Flushing FLAC samples...");
+
         infile.seekSet(getReadOffset());
 
         int writeOffset = 0;
@@ -646,24 +659,32 @@ void loadNextTraf() {
               + i * trafBytesPerSample
             );
           }
-          flacSampleOffsets[i] = writeOffset;
+          flacSampleOffsets2[i] = writeOffset;
           writeOffset += size;
         }
 
-        infile.read(flacBuf2, writeOffset);
-        flacBuf2Len = writeOffset;
+        nextFLACTrunSamplesCount = getTrunSampleCount();
 
-        dbgPrint("Flushing FLAC samples for next data...");
-        while(!loadFLACDataChunk()) { yield(); }
+        infile.read(flacBuf, writeOffset);
         uint64_t t0 = micros();
 
-        mutex_enter_blocking(&flacLoadMtx);
-        currentFLACDataChunk = numFLACDataChunks = 0;
+        dbgPrint("Flushing FLAC samples...");
 
-        memcpy(flacBuf, flacBuf2, flacBuf2Len);
-        loadMP4FLACData();
+        while(!loadFLACDataChunk()) { yield(); }
+        
+        numFLACDataChunks = nextFLACTrunSamplesCount;
+        currentFLACDataChunk = 0;
+
+        mutex_enter_blocking(&flacLoadMtx);
+
+        for(int i =0; i < 256; i++) {
+          flacSampleOffsets[i] = flacSampleOffsets2[i];
+        }
+
+        dbgPrint(String(nextFLACTrunSamplesCount)+" flac chunks");
 
         mutex_exit(&flacLoadMtx);
+
         uint64_t t1 = micros();
         dbgPrint("FLAC skip+load in "+String((int)(t1-t0))+" us");
         FLACUsed();
@@ -683,6 +704,7 @@ void loadNextTraf() {
       dbgPrint("Skipping MDAT...");
       
       skipIfMdat();
+      loadFLACTraf = 0;
     }
     //dbgPrint("Tracks loaded!");
 }
@@ -723,6 +745,14 @@ void getH264Sample(uint8_t* sampleBuf, int s, int* size) {
   }
   dbgPrint("Copying h264 at sample offset "+String(h264SampleOffsets[s])+" and size "+String(*size));
   memcpy(sampleBuf, h264Buf+h264SampleOffsets[s], *size);
+}
+
+void loadLastH264Sample(int s) {
+  getH264Sample(h264LastSampleBuf, s, &lastH264SampleSize);
+}
+
+void pushLastH264Sample(uint8_t* sampleBuf) {
+  memcpy(sampleBuf, h264LastSampleBuf, lastH264SampleSize);
 }
 
 uint8_t* getH264SamplePtr(int s, int* size) {
