@@ -465,7 +465,14 @@ void seekTimeMP4(int seekMs) {
   infile.read(tfraElemBuf, tfraElemSize);
   int tfraTime = timescaleDuration = getLongLE(tfraElemBuf);
   int moofOffset = getLongLE(tfraElemBuf+8);
-  seekMs %= (tfraTime * sampleDefaultDuration / MP4Timescale);
+  uint32_t totalMediaTimeMs = (tfraTime * sampleDefaultDuration / MP4Timescale);
+  unsigned int timeOffset = seekMs % totalMediaTimeMs;
+  if((totalMediaTimeMs-timeOffset) < (15*1000)) {
+    infile.seekSet(p0);
+    seekTimeMP4(0); // Loop if less than 15s of video remaining
+    return;
+  }
+  seekMs %= totalMediaTimeMs;
   while(l < r) {
     int m = l + (r-l)/2;
     infile.seekSet(r0 + tfraElemSize*m);
@@ -1086,6 +1093,8 @@ int getVideoInfo(int startTimeOffsetS) {
   uint32_t aviMoviListFrameCount[5];
   aviRIFFSize = 0;
 
+  int p0 = infile.position();
+
   setAVIScreenBuffer();
   #ifndef TinyTVKit
   if(videoBuf[1] == NULL && DOUBLE_BUFFER) {
@@ -1175,6 +1184,11 @@ int getVideoInfo(int startTimeOffsetS) {
         }
         frameRate = getIntBE(chunkData + 20);
         totalFrames = getIntBE(chunkData + 28);
+        unsigned int timeOffset = (startTimeOffsetS * frameRate) % totalFrames;
+        if((totalFrames / frameRate - timeOffset) < 15) {
+          infile.seekSet(p0);
+          return getVideoInfo(0); // Loop if less than 15s of video remaining
+        }
         skipBytes -= 32;
       }
     }
@@ -1261,6 +1275,12 @@ int getTSVVideoInfo(int startTimeOffsetS) {
 
   uint32_t frameSizeBytes = (VIDEO_W * VIDEO_H * 2) + (1024 * 2); // video + audio bytes per frame
   uint32_t totalFrames = infile.fileSize() / frameSizeBytes;
+
+  unsigned int timeOffset = startTimeOffsetS % (totalFrames / frameRate);
+
+  if(totalFrames / frameRate - timeOffset < 15) {
+    return getTSVVideoInfo(0); // Loop if less than 15s of video remaining
+  }
 
   int framesToSkip = startTimeOffsetS * frameRate;
   framesToSkip = framesToSkip % totalFrames;

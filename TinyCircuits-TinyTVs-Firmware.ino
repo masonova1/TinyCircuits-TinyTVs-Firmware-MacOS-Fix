@@ -33,7 +33,7 @@
 */
 
 // Uncomment to compile debug version
-#define DEBUGAPP (true)
+//#define DEBUGAPP (true)
 
 // This include order matters
 #include <SPI.h>
